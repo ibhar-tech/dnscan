@@ -47,13 +47,25 @@ class DNScanner:
         self.sync_resolver = dns.resolver.Resolver()
         self.sync_resolver.timeout = 2
         self.sync_resolver.lifetime = 2
-        self.nameservers = self._get_nameservers()
-        if self.nameservers:
-            self.sync_resolver.nameservers = self.nameservers
+        self.record_type = 'AAAA' if self.args.ipv6 else 'A'
+        
+        # Default public fast resolvers to prevent ISP rate limiting
+        self.nameservers = [
+            '1.1.1.1', '1.0.0.1',           # Cloudflare
+            '8.8.8.8', '8.8.4.4',           # Google
+            '9.9.9.9', '149.112.112.112',   # Quad9
+            '208.67.222.222', '208.67.220.220' # OpenDNS
+        ]
+        
+        if args.resolvers:
+            self.nameservers = args.resolvers.split(',')
+        elif args.resolver_list:
+            with open(args.resolver_list, 'r') as f:
+                self.nameservers = [line.strip() for line in f if line.strip()]
 
-        self.record_type = 'AAAA' if args.ipv6 else 'NS' if args.tld else 'A'
+        # Increase multiplier to maximize async socket throughput
         self.queue = asyncio.Queue()
-        self.concurrency = args.threads * 20  # Boost concurrency since we use async
+        self.concurrency = args.threads * 100  # Boost concurrency since we use async
         self.progress = None
         self.task_id = None
 
@@ -377,7 +389,7 @@ class DNScanner:
                         if self.progress and self.task_id is not None:
                             self.progress.update(self.task_id, total=self.queue.qsize() + self.progress.tasks[self.task_id].completed)
 
-            except aiodns.error.DNSError:
+            except Exception:
                 pass
             finally:
                 self.queue.task_done()
@@ -404,7 +416,7 @@ class DNScanner:
 
     async def scan(self):
         warnings.filterwarnings("ignore", category=DeprecationWarning)
-        self.resolver = aiodns.DNSResolver(nameservers=self.nameservers, tries=1, timeout=1.5)
+        self.resolver = aiodns.DNSResolver(nameservers=self.nameservers, tries=1, timeout=1.5, rotate=True)
         
         # Baseline checks
         if not self.args.nocheck:
