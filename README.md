@@ -7,18 +7,25 @@ The script will first try to perform a zone transfer using each of the target do
 
 If this fails, it will lookup TXT and MX records for the domain, and then perform a recursive subdomain scan using the supplied wordlist.
 
+### Modern Upgrade
+
+This tool has been thoroughly modernized to use **`uv`** for dependency management, **`asyncio`** and **`aiodns`** for blazing-fast asynchronous DNS resolution, and **`rich`** for a beautiful terminal UI with progress bars.
+
 Usage
 -----
 
-dnscan.py (-d \<domain\> | -l \<list\>) [OPTIONS]
+```
+uv run ./dnscan.py (-d <domain> | -l <list>) [wordlist_size] [OPTIONS]
+```
 
 #### Mandatory Arguments
     -d  --domain                              Target domain; OR
     -l  --list                                Newline separated file of domains to scan
     
 #### Optional Arguments
+    wordlist_size                             Size of the built-in wordlist to use (e.g., 100, 500, 1000)
     -w --wordlist <wordlist>                  Wordlist of subdomains to use
-    -t --threads <threadcount>                Threads (1 - 32), default 8
+    -t --threads <threadcount>                Concurrency multiplier (tasks = threads * 20), default 25
     -6 --ipv6                                 Scan for IPv6 records (AAAA)
     -z --zonetransfer                         Perform zone transfer and exit
     -r --recursive                            Recursively scan subdomains
@@ -40,7 +47,7 @@ dnscan.py (-d \<domain\> | -l \<list\>) [OPTIONS]
 Custom insertion points can be specified by adding `%%` in the domain name, such as:
 
 ```
-$ dnscan.py -d dev-%%.example.org
+$ uv run ./dnscan.py -d dev-%%.example.org
 ```
 
 Wordlists
@@ -48,9 +55,12 @@ Wordlists
 
 A number of wordlists are supplied with dnscan.
 
-The first four (**subdomains-100.txt**, **subdomains-500.txt**, **subdomains-1000.txt** and **subdomains-10000.txt**) were created by analysing the most commonly occuring subomdains in approximately 86,000 zone files that were transferred as part of a separate research project. These wordlists are sorted by the popularity of the subdomains (more strictly by the percentage of zones that contained them in the dataset).
+You can use the positional `wordlist_size` shortcut to easily select a built-in wordlist without the `-w` flag.
+For example, `uv run ./dnscan.py -d example.com 100` uses `subdomains-100.txt`.
 
-The **subdomain-uk-500.txt** and **subdomain-uk-1000.txt** lists are created using the same methodology, but from a set of approximately 180,000 zone transfers from ".uk" domains.
+The first four (**subdomains-100.txt**, **subdomains-500.txt**, **subdomains-1000.txt** and **subdomains-10000.txt**) were created by analysing the most commonly occuring subdomains in approximately 86,000 zone files that were transferred as part of a separate research project. These wordlists are sorted by the popularity of the subdomains (more strictly by the percentage of zones that contained them in the dataset).
+
+The **subdomains-uk-500.txt** and **subdomains-uk-1000.txt** lists are created using the same methodology, but from a set of approximately 180,000 zone transfers from ".uk" domains.
 
 The final (and default) wordlist (**subdomains.txt**) is based on the top 500 subdomains by popularity and the top 500 UK subdomains, but has had a number of manual additions made based on domains identified during testing.
 
@@ -71,8 +81,8 @@ The `-a`/`--alterations` switch adds various prefixes and suffixes (such as `dev
 Setup
 -----
 
-dnscan requires Python 3, and the netaddr (version 0.7.19 or greater) and dnspython (version 2.0.0 or greater) libraries.
+dnscan requires Python 3.12+ and uses `uv` for dependency management. It relies on the `aiodns`, `dnspython`, `netaddr`, `cryptography`, `packaging`, and `rich` libraries.
 
-Run the following command to install dependencies:
+Run the following command to initialize and run the tool:
 
-    $ pip install -r requirements.txt
+    $ uv run ./dnscan.py -h
