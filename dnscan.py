@@ -55,6 +55,14 @@ class DNScanner:
 
     def _load_wordlist(self):
         wordlist_path = self.args.wordlist
+        if not wordlist_path and hasattr(self.args, 'wordlist_size') and self.args.wordlist_size:
+            filename = f"subdomains-{self.args.wordlist_size}.txt"
+            potential_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), filename)
+            if os.path.exists(potential_path):
+                wordlist_path = potential_path
+            else:
+                wordlist_path = self.args.wordlist_size
+                
         if self.args.tld and not wordlist_path:
             wordlist_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), "tlds.txt")
         elif not wordlist_path:
@@ -414,6 +422,7 @@ def get_args():
     target = parser.add_mutually_exclusive_group(required=True)
     target.add_argument('-d', '--domain', help='Target domains (separated by commas)', dest='domain', required=False)
     target.add_argument('-l', '--list', help='File containing list of target domains', dest='domain_list', required=False)
+    parser.add_argument('wordlist_size', nargs='?', help='Size of the built-in wordlist to use (e.g., 100, 500, 1000)', default=None)
     parser.add_argument('-w', '--wordlist', help='Wordlist', dest='wordlist', required=False)
     parser.add_argument('-t', '--threads', help='Concurrency multiplier (tasks = threads * 20)', dest='threads', required=False, type=int, default=25)
     parser.add_argument('-6', '--ipv6', action="store_true", help='Scan for AAAA records', dest='ipv6')
