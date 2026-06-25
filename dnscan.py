@@ -5,6 +5,8 @@
 
 import argparse
 import asyncio
+import uvloop
+uvloop.install()
 import os
 import re
 import sys
