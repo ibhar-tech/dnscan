@@ -120,16 +120,19 @@ class DNScanner:
             size_str = f"{size_mb:.2f} MB" if size_mb > 1 else f"{size_bytes / 1024:.2f} KB"
             console.print(f"  [green]{idx}[/green] - {os.path.basename(path)} ({size_str})")
             
-        console.print("[dim]You can choose multiple wordlists by separating them with commas (e.g., 1,3,5)[/dim]")
+        console.print("[dim]You can choose multiple wordlists by separating them with commas (e.g., 1,3,5), or type 'all' to use all of them[/dim]")
         choices = Prompt.ask("Select wordlists", default="1")
         
         selected_paths = []
-        for choice in choices.split(','):
-            choice = choice.strip()
-            if choice.isdigit():
-                idx = int(choice) - 1
-                if 0 <= idx < len(available_lists):
-                    selected_paths.append(available_lists[idx])
+        if choices.strip().lower() == 'all':
+            selected_paths = available_lists
+        else:
+            for choice in choices.split(','):
+                choice = choice.strip()
+                if choice.isdigit():
+                    idx = int(choice) - 1
+                    if 0 <= idx < len(available_lists):
+                        selected_paths.append(available_lists[idx])
         
         if not selected_paths:
             console.print("[red]FATAL: No valid wordlists selected.[/red]")
@@ -377,8 +380,6 @@ class DNScanner:
             except aiodns.error.DNSError:
                 pass
             finally:
-                if self.progress and self.task_id is not None:
-                    self.progress.update(self.task_id, advance=1)
                 self.queue.task_done()
 
     def _populate_queue(self, domain, base_target, depth):
@@ -481,8 +482,17 @@ class DNScanner:
         ) as self.progress:
             self.task_id = self.progress.add_task("[cyan]Brute forcing...", total=total_tasks)
             
+            async def update_progress():
+                while not self.queue.empty():
+                    completed = total_tasks - self.queue.qsize()
+                    self.progress.update(self.task_id, completed=completed)
+                    await asyncio.sleep(0.5)
+                self.progress.update(self.task_id, completed=total_tasks)
+                
+            progress_task = asyncio.create_task(update_progress())
             workers = [asyncio.create_task(self._worker()) for _ in range(self.concurrency)]
             await asyncio.gather(*workers)
+            await progress_task
         
         if self.outfile_ips:
             for address in sorted(self.addresses):
@@ -525,7 +535,7 @@ def main():
         asyncio.run(scanner.scan())
     except KeyboardInterrupt:
         console.print("\n[red]Caught KeyboardInterrupt, quitting...[/red]")
-        sys.exit(1)
+        os._exit(1)
 
 if __name__ == "__main__":
     main()
