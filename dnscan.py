@@ -23,6 +23,10 @@ import dns.name
 import dns.message
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn, TimeElapsedColumn
+from rich.prompt import Prompt
+import glob
+import tempfile
+import gzip
 
 console = Console()
 
@@ -54,26 +58,97 @@ class DNScanner:
         self.task_id = None
 
     def _load_wordlist(self):
-        wordlist_path = self.args.wordlist
-        if not wordlist_path and hasattr(self.args, 'wordlist_size') and self.args.wordlist_size:
-            filename = f"subdomains-{self.args.wordlist_size}.txt"
-            potential_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), filename)
-            if os.path.exists(potential_path):
-                wordlist_path = potential_path
+        data_dir = os.path.join(os.path.dirname(os.path.realpath(__file__)), "data")
+        
+        def read_lines(path):
+            if path.endswith('.gz'):
+                with gzip.open(path, 'rt', encoding='utf-8', errors='ignore') as f:
+                    return f.read().splitlines()
             else:
-                wordlist_path = self.args.wordlist_size
+                with open(path, 'r', encoding='utf-8', errors='ignore') as f:
+                    return f.read().splitlines()
+        
+        # If user provided a specific path via -w
+        if self.args.wordlist:
+            if os.path.exists(self.args.wordlist):
+                return read_lines(self.args.wordlist)
+            else:
+                # Try in data dir
+                potential_path = os.path.join(data_dir, self.args.wordlist)
+                if os.path.exists(potential_path):
+                    return read_lines(potential_path)
+                console.print(f"[red]FATAL: Could not open wordlist {self.args.wordlist}[/red]")
+                sys.exit(1)
                 
-        if self.args.tld and not wordlist_path:
-            wordlist_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), "tlds.txt")
-        elif not wordlist_path:
-            wordlist_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), "subdomains.txt")
+        # If user provided a size argument via positional (e.g. 100)
+        if hasattr(self.args, 'wordlist_size') and self.args.wordlist_size:
+            size_arg = self.args.wordlist_size
             
-        try:
-            with open(wordlist_path, 'r') as f:
-                return f.read().splitlines()
-        except FileNotFoundError:
-            console.print(f"[red]FATAL: Could not open wordlist {wordlist_path}[/red]")
+            # Check for possible filenames (with .txt or .txt.gz)
+            possible_filenames = [
+                f"subdomains-{size_arg}.txt",
+                f"subdomains-{size_arg}.txt.gz",
+                size_arg,
+                f"{size_arg}.gz"
+            ]
+            
+            for filename in possible_filenames:
+                potential_path = os.path.join(data_dir, filename)
+                if os.path.exists(potential_path):
+                    return read_lines(potential_path)
+            
+            # If not found, fall back to error
+            console.print(f"[red]FATAL: Could not find wordlist matching '{size_arg}' in {data_dir}[/red]")
             sys.exit(1)
+
+        # Handle TLD mode natively if requested
+        if self.args.tld:
+            tld_path = os.path.join(data_dir, "tlds.txt")
+            if os.path.exists(tld_path):
+                return read_lines(tld_path)
+                    
+        # Interactive mode if no wordlist is provided
+        console.print("[cyan]No wordlist provided. Available wordlists in data folder:[/cyan]")
+        available_lists = sorted(glob.glob(os.path.join(data_dir, "*.txt")) + glob.glob(os.path.join(data_dir, "*.txt.gz")))
+        if not available_lists:
+            console.print("[red]FATAL: No wordlists found in data folder.[/red]")
+            sys.exit(1)
+            
+        for idx, path in enumerate(available_lists, 1):
+            size_bytes = os.path.getsize(path)
+            size_mb = size_bytes / (1024 * 1024)
+            size_str = f"{size_mb:.2f} MB" if size_mb > 1 else f"{size_bytes / 1024:.2f} KB"
+            console.print(f"  [green]{idx}[/green] - {os.path.basename(path)} ({size_str})")
+            
+        console.print("[dim]You can choose multiple wordlists by separating them with commas (e.g., 1,3,5)[/dim]")
+        choices = Prompt.ask("Select wordlists", default="1")
+        
+        selected_paths = []
+        for choice in choices.split(','):
+            choice = choice.strip()
+            if choice.isdigit():
+                idx = int(choice) - 1
+                if 0 <= idx < len(available_lists):
+                    selected_paths.append(available_lists[idx])
+        
+        if not selected_paths:
+            console.print("[red]FATAL: No valid wordlists selected.[/red]")
+            sys.exit(1)
+            
+        combined_words = set()
+        for path in selected_paths:
+            combined_words.update(filter(bool, read_lines(path)))
+                
+        # Write to a physical temporary file so the user has it if they need to inspect it
+        tmp_fd, tmp_path = tempfile.mkstemp(prefix="dnscan_wordlist_", suffix=".txt", text=True)
+        with os.fdopen(tmp_fd, 'w') as f:
+            for word in combined_words:
+                f.write(word + '\n')
+                
+        console.print(f"[blue][*][/blue] Combined {len(selected_paths)} wordlists into temporary file:")
+        console.print(f"    [yellow]{tmp_path}[/yellow] ([green]{len(combined_words)} unique words[/green])")
+        
+        return list(combined_words)
 
     def _load_targets(self):
         targets = []
