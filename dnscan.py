@@ -22,13 +22,21 @@ import dns.rdatatype
 import dns.name
 import dns.message
 from rich.console import Console
-from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn, TimeElapsedColumn
+from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn, TimeElapsedColumn, MofNCompleteColumn, TimeRemainingColumn, ProgressColumn
+from rich.text import Text
 from rich.prompt import Prompt
 import glob
 import tempfile
 import gzip
 
 console = Console()
+
+class SpeedColumn(ProgressColumn):
+    def render(self, task):
+        speed = task.speed
+        if speed is None:
+            return Text("? w/s", style="cyan")
+        return Text(f"{speed:.1f} w/s", style="cyan")
 
 class DNScanner:
     def __init__(self, args):
@@ -489,9 +497,13 @@ class DNScanner:
         with Progress(
             SpinnerColumn(),
             TextColumn("[progress.description]{task.description}"),
+            MofNCompleteColumn(),
             BarColumn(),
             TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+            SpeedColumn(),
             TimeElapsedColumn(),
+            TextColumn("ETA:"),
+            TimeRemainingColumn(),
             console=console
         ) as self.progress:
             self.task_id = self.progress.add_task("[cyan]Brute forcing...", total=total_tasks)
