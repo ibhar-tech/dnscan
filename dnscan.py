@@ -404,7 +404,7 @@ class DNScanner:
 
     async def scan(self):
         warnings.filterwarnings("ignore", category=DeprecationWarning)
-        self.resolver = aiodns.DNSResolver(nameservers=self.nameservers)
+        self.resolver = aiodns.DNSResolver(nameservers=self.nameservers, tries=1, timeout=1.5)
         
         # Baseline checks
         if not self.args.nocheck:
@@ -472,6 +472,8 @@ class DNScanner:
             return
 
         total_tasks = self.queue.qsize()
+        console.print(f"[blue][*][/blue] Starting brute force with [yellow]{self.args.threads}[/yellow] threads (Concurrency: [yellow]{self.concurrency}[/yellow] concurrent tasks)")
+        
         with Progress(
             SpinnerColumn(),
             TextColumn("[progress.description]{task.description}"),
