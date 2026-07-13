@@ -40,3 +40,7 @@ nosetests.xml
 
 # Large data files (use separate download)
 data/best-dns-wordlist.txt.gz
+
+# Scratch scripts
+test_fd.py
+test_rich.py
