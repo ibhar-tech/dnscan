@@ -1,15 +1,23 @@
 [project]
 name = "dnscan"
 version = "0.1.0"
-description = "Add your description here"
+description = "Fast async DNS subdomain scanner with zone transfer, DNSSEC validation, and rich terminal UI"
 readme = "README.md"
+license = "GPL-3.0-or-later"
 requires-python = ">=3.12"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Topic :: Security",
+    "Topic :: Internet :: Name Service (DNS)",
+    "Environment :: Console",
+]
 dependencies = [
     "aiodns>=4.0.4",
     "cryptography>=49.0.0",
     "dnspython>=2.8.0",
-    "netaddr>=1.3.0",
-    "packaging>=26.2",
     "rich>=15.0.0",
     "uvloop>=0.22.1",
 ]
+
+[project.scripts]
+dnscan = "dnscan:main"

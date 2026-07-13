@@ -6,14 +6,12 @@
 import argparse
 import asyncio
 import uvloop
-uvloop.install()
 import os
 import re
 import sys
 import time
 import warnings
 from ipaddress import ip_address
-import typing
 
 import aiodns
 import dns.resolver
@@ -43,9 +41,9 @@ class SpeedColumn(ProgressColumn):
 class DNScanner:
     def __init__(self, args):
         self.args = args
-        self.wildcards: typing.Dict[str, typing.List[str]] = {}
-        self.addresses: typing.Set[str] = set()
-        self.found_domains: typing.List[typing.Tuple[str, str]] = []
+        self.wildcards: dict[str, list[str]] = {}
+        self.addresses: set[str] = set()
+        self.found_domains: list[tuple[str, str]] = []
         
         self.outfile = open(args.output_filename, "w") if args.output_filename else None
         self.outfile_ips = open(args.output_ips, "w") if args.output_ips else None
@@ -191,17 +189,6 @@ class DNScanner:
             sys.exit(1)
         return targets
 
-    def _get_nameservers(self):
-        if self.args.resolver_list:
-            try:
-                with open(self.args.resolver_list, 'r') as f:
-                    return f.read().splitlines()
-            except FileNotFoundError:
-                console.print(f"[red]FATAL: Could not open file containing resolvers: {self.args.resolver_list}[/red]")
-                sys.exit(1)
-        elif self.args.resolvers:
-            return self.args.resolvers.split(",")
-        return None
 
     def output_status(self, msg):
         console.print(f"[blue][*][/blue] {msg}")
@@ -399,8 +386,11 @@ class DNScanner:
                         if self.progress and self.task_id is not None:
                             self.progress.update(self.task_id, total=self.queue.qsize() + self.progress.tasks[self.task_id].completed)
 
-            except Exception:
+            except aiodns.error.DNSError:
                 pass
+            except Exception as e:
+                if self.args.verbose:
+                    console.print(f"[dim][v] Worker error for {domain}: {e}[/dim]")
             finally:
                 self.queue.task_done()
 
@@ -526,6 +516,13 @@ class DNScanner:
             for address in sorted(self.addresses):
                 self.outfile_ips.write(f"{address}\n")
 
+    def cleanup(self):
+        """Close any open output files."""
+        if self.outfile:
+            self.outfile.close()
+        if self.outfile_ips:
+            self.outfile_ips.close()
+
 def get_args():
     parser = argparse.ArgumentParser(
         description='dnscan - Fast Async DNS Scanner',
@@ -537,7 +534,7 @@ def get_args():
     target.add_argument('-l', '--list', help='File containing list of target domains', dest='domain_list', required=False)
     parser.add_argument('wordlist_size', nargs='?', help='Size of the built-in wordlist to use (e.g., 100, 500, 1000)', default=None)
     parser.add_argument('-w', '--wordlist', help='Wordlist', dest='wordlist', required=False)
-    parser.add_argument('-t', '--threads', help='Concurrency multiplier (tasks = threads * 20)', dest='threads', required=False, type=int, default=25)
+    parser.add_argument('-t', '--threads', help='Concurrency multiplier (tasks = threads * 100)', dest='threads', required=False, type=int, default=25)
     parser.add_argument('-6', '--ipv6', action="store_true", help='Scan for AAAA records', dest='ipv6')
     parser.add_argument('-z', '--zonetransfer', action="store_true", help='Only perform zone transfers', dest='zonetransfer')
     parser.add_argument('-r', '--recursive', action="store_true", help="Recursively scan subdomains", dest='recurse')
@@ -557,13 +554,18 @@ def get_args():
     return parser.parse_args()
 
 def main():
+    uvloop.install()
     args = get_args()
+    scanner = None
     try:
         scanner = DNScanner(args)
         asyncio.run(scanner.scan())
     except KeyboardInterrupt:
         console.print("\n[red]Caught KeyboardInterrupt, quitting...[/red]")
-        os._exit(1)
+        sys.exit(1)
+    finally:
+        if scanner:
+            scanner.cleanup()
 
 if __name__ == "__main__":
     main()

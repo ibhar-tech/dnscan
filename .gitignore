@@ -37,3 +37,6 @@ nosetests.xml
 # UV
 .venv
 .venv/
+
+# Large data files (use separate download)
+data/best-dns-wordlist.txt.gz
